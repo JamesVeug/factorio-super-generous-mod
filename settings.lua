@@ -92,7 +92,7 @@ data:extend(
 		name = "sgr-output-item-edit",
 		setting_type = "startup",
 		default_value = true,
-		order = "3.1"
+		order = "3.0"
 	},
 	{
 	    type = "int-setting",
@@ -148,7 +148,7 @@ data:extend(
 	    type = "int-setting",
 	    name = "sgr-output-fluid-custom-amount",
 	    setting_type = "startup",
-        default_value = 10,
+        default_value = 1,
         minimum_value = 1,
         maximum_value = 65535,
 		order = "4.3",
