@@ -78,7 +78,7 @@ local researchTimeInfiniteCustomAmount = settings.startup["sgr-research-time-inf
 
 
 -- debug
-local enableLogs = true
+local enableLogs = false
 local logIndents = 0;
 
 -----------------------------
@@ -190,22 +190,26 @@ function get_ingredient_type(ingredient)
 end
 
 function get_recipe_ingredient_parent(recipe)
+
 	if recipe.ingredients then
 		return recipe
 	elseif recipe.normal then -- for 0.15 for normal and expensive recipes 
 		return recipe.normal
 	end
 
+	--print("LOG: Unable to get recipe_ingredient_parent for: " .. dump(recipe))
 	return nil
 end
 
 
 function get_recipe_ingredients(recipe)
 	local ingredient_parent = get_recipe_ingredient_parent(recipe)
+	--print("ingredient_parent: " .. dump(ingredient_parent))
 	if ingredient_parent ~= nil then
+		--print("ingredient_parent.ingredients: " .. dump(ingredient_parent.ingredients))
 		return ingredient_parent.ingredients
 	end
-
+	
 	return nil
 end
 
@@ -288,15 +292,17 @@ function calculate_ingredient_depth(recipe, recipes_tried)
 	-- calculate
 	depth = 0
 	local recipe_ingredients = get_recipe_ingredients(recipe)
-	--print("Ingredients: " .. dump(recipe_ingredients))
-	for i, ingredient in pairs(recipe_ingredients) do
-		local ingredient_name = get_ingredient_name(ingredient)
-		local ingredient_recipe = cached_recipes[ingredient_name] -- steel bar recipe
-		if ingredient_recipe then
-			if recipes_tried[ingredient_recipe] ~= nil then
-				print("LOG: Recursive recipe " .. dump(recipe_name) .. "->" .. dump(ingredient_name))
-			else
-				depth = math.max(depth, get_ingredient_depth(ingredient_recipe, recipes_tried) + 1)
+	if recipe_ingredients ~= nil then
+		--print("Ingredients: " .. dump(recipe_ingredients))
+		for i, ingredient in pairs(recipe_ingredients) do
+			local ingredient_name = get_ingredient_name(ingredient)
+			local ingredient_recipe = cached_recipes[ingredient_name] -- steel bar recipe
+			if ingredient_recipe then
+				if recipes_tried[ingredient_recipe] ~= nil then
+					--print("LOG: Recursive recipe " .. dump(recipe_name) .. "->" .. dump(ingredient_name))
+				else
+					depth = math.max(depth, get_ingredient_depth(ingredient_recipe, recipes_tried) + 1)
+				end
 			end
 		end
 	end
@@ -341,21 +347,23 @@ function calculate_total_ingredients(recipe, recipes_tried)
 	-- calculate total ingredients
 	total = 0
 	local recipe_ingredients = get_recipe_ingredients(recipe)
-	for i, ingredient in pairs(recipe_ingredients) do
-		-- ingredient for recipe ( steel bar )
-		local ingredient_name = get_ingredient_name(ingredient)
-		local ingredient_recipe = cached_recipes[ingredient_name] -- steel bar recipe
-		if ingredient_recipe then
-			if recipes_tried[ingredient_recipe] ~= nil then
-				-- this recipe is trying to get the recipe that another relies on. Just ignore it.
-				--print("LOG: Recursive recipe " .. dump(recipe_name) .. "->" .. dump(ingredient_name))
-			else 
-				-- not calculated yet
-				total = total + get_total_ingredients_required(ingredient_recipe, recipes_tried) + 1
+	if recipe_ingredients ~= nil then
+		for i, ingredient in pairs(recipe_ingredients) do
+			-- ingredient for recipe ( steel bar )
+			local ingredient_name = get_ingredient_name(ingredient)
+			local ingredient_recipe = cached_recipes[ingredient_name] -- steel bar recipe
+			if ingredient_recipe then
+				if recipes_tried[ingredient_recipe] ~= nil then
+					-- this recipe is trying to get the recipe that another relies on. Just ignore it.
+					--print("LOG: Recursive recipe " .. dump(recipe_name) .. "->" .. dump(ingredient_name))
+				else
+					-- not calculated yet
+					total = total + get_total_ingredients_required(ingredient_recipe, recipes_tried) + 1
+				end
+			else
+				--print("LOG: Did not find recipe for ingredient " .. dump(ingredient_name) .. " for " .. dump(recipe_name))
+				total = total + 1
 			end
-		else
-			--print("LOG: Did not find recipe for ingredient " .. dump(ingredient_name) .. " for " .. dump(recipe_name))
-			total = total + 1
 		end
 	end
 
@@ -416,59 +424,61 @@ function calculate_total_ingredient_data(recipe, recipes_tried)
 	-- calculate total ingredients
 	local total = 0
 	local recipe_ingredients = get_recipe_ingredients(recipe)
-	for i, ingredient in pairs(recipe_ingredients) do
-		-- ingredient for recipe ( steel bar )
-		local ingredient_name = get_ingredient_name(ingredient)
-		local ingredient_amount = getRequiredIngredientAmount(ingredient)
-		--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " ingredient: " .. dump(ingredient_name) .. " = " .. dump(ingredient_amount))
-		logIndents = logIndents + 1
+	if recipe_ingredients ~= nil then
+		for i, ingredient in pairs(recipe_ingredients) do
+			-- ingredient for recipe ( steel bar )
+			local ingredient_name = get_ingredient_name(ingredient)
+			local ingredient_amount = getRequiredIngredientAmount(ingredient)
+			--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " ingredient: " .. dump(ingredient_name) .. " = " .. dump(ingredient_amount))
+			logIndents = logIndents + 1
 
-		--print("LOG: Did not find recipe for ingredient " .. dump(ingredient_name) .. " for " .. dump(recipe_name))
-		total = total + 1
-		local cached_ingredient_amount = recipe_data["ingredients"][ingredient_name]
-		if cached_ingredient_amount ~= nil then
-			recipe_data["ingredients"][ingredient_name] = cached_ingredient_amount + ingredient_amount
-		else
-			recipe_data["ingredients"][ingredient_name] = ingredient_amount + 0
-		end
-
-		-- add ingredients
-		local ingredient_recipe = cached_recipes[ingredient_name] -- steel bar recipe
-		if ingredient_recipe then
-			if ingredient_recipe ~= nil and recipes_tried[ingredient_recipe] ~= nil then
-				-- this recipe is trying to get the recipe that another relies on. Just ignore it.
-				--print("LOG: Recursive recipe " .. dump(recipe_name) .. "->" .. dump(ingredient_name))
-			else 
-				-- not calculated yet so calculate ingredient
-				local ingredient_data = calculate_total_ingredient_data(ingredient_recipe, recipes_tried)
-				--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " ingredient_data: " .. dump(ingredient_data))
-
-				-- record total ingredients
-				total = total + ingredient_data["total_ingredients_required"]
-				--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " total: " .. dump(total))
-
-				-- record ingredients of this ingredient
-				local current_data_ingredients = recipe_data["ingredients"]
-				local sub_ingredient_data = ingredient_data["ingredients"]
-				--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " before ingredient: " .. dump(current_data_ingredients))
-				--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " before sub ingredient: " .. dump(sub_ingredient_data))
-				for sub_ingredient_name, sub_ingredient_amount in pairs(sub_ingredient_data) do
-					--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " sub ingredient: " .. dump(sub_ingredient_name) .. ", " .. dump(sub_ingredient_amount))
-
-					cached_ingredient_amount = current_data_ingredients[sub_ingredient_name]
-					if cached_ingredient_amount ~= nil then
-						current_data_ingredients[sub_ingredient_name] = cached_ingredient_amount + sub_ingredient_amount
-					else
-						current_data_ingredients[sub_ingredient_name] = sub_ingredient_amount + 0
-					end
-				end
-				recipe_data["ingredients"] = current_data_ingredients
-				--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " after ingredient: " .. dump(current_data_ingredients))
-				--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " after sub ingredient: " .. dump(sub_ingredient_data))
+			--print("LOG: Did not find recipe for ingredient " .. dump(ingredient_name) .. " for " .. dump(recipe_name))
+			total = total + 1
+			local cached_ingredient_amount = recipe_data["ingredients"][ingredient_name]
+			if cached_ingredient_amount ~= nil then
+				recipe_data["ingredients"][ingredient_name] = cached_ingredient_amount + ingredient_amount
+			else
+				recipe_data["ingredients"][ingredient_name] = ingredient_amount + 0
 			end
-		end
 
-		logIndents = logIndents - 1
+			-- add ingredients
+			local ingredient_recipe = cached_recipes[ingredient_name] -- steel bar recipe
+			if ingredient_recipe then
+				if ingredient_recipe ~= nil and recipes_tried[ingredient_recipe] ~= nil then
+					-- this recipe is trying to get the recipe that another relies on. Just ignore it.
+					--print("LOG: Recursive recipe " .. dump(recipe_name) .. "->" .. dump(ingredient_name))
+				else
+					-- not calculated yet so calculate ingredient
+					local ingredient_data = calculate_total_ingredient_data(ingredient_recipe, recipes_tried)
+					--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " ingredient_data: " .. dump(ingredient_data))
+
+					-- record total ingredients
+					total = total + ingredient_data["total_ingredients_required"]
+					--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " total: " .. dump(total))
+
+					-- record ingredients of this ingredient
+					local current_data_ingredients = recipe_data["ingredients"]
+					local sub_ingredient_data = ingredient_data["ingredients"]
+					--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " before ingredient: " .. dump(current_data_ingredients))
+					--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " before sub ingredient: " .. dump(sub_ingredient_data))
+					for sub_ingredient_name, sub_ingredient_amount in pairs(sub_ingredient_data) do
+						--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " sub ingredient: " .. dump(sub_ingredient_name) .. ", " .. dump(sub_ingredient_amount))
+
+						cached_ingredient_amount = current_data_ingredients[sub_ingredient_name]
+						if cached_ingredient_amount ~= nil then
+							current_data_ingredients[sub_ingredient_name] = cached_ingredient_amount + sub_ingredient_amount
+						else
+							current_data_ingredients[sub_ingredient_name] = sub_ingredient_amount + 0
+						end
+					end
+					recipe_data["ingredients"] = current_data_ingredients
+					--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " after ingredient: " .. dump(current_data_ingredients))
+					--print("[calculate_total_ingredient_data] " .. dump(recipe_name) .. " after sub ingredient: " .. dump(sub_ingredient_data))
+				end
+			end
+
+			logIndents = logIndents - 1
+		end
 	end
 
 	total = math.max(total, 1)
@@ -498,6 +508,10 @@ end
 -- returns {name: "x", output: {...}}
 function getRecipeResults(recipe)
 	local ingredient_parent = get_recipe_ingredient_parent(recipe)
+	if ingredient_parent == nil then
+		return nil
+	end
+	
 	logIndents = logIndents + 1
 
 	if ingredient_parent.result ~= nil then
@@ -547,7 +561,7 @@ function getRecipeOutputItemName(recipeOutputItem)
 		return outputItem
 	end
 
-	print("Could not find outputItemName for " .. dump(recipeOutputItem))
+	--print("Could not find outputItemName for " .. dump(recipeOutputItem))
 	return nil
 end
 
@@ -573,12 +587,20 @@ function processRecipe (recipe)
 
 	-- process dependencies first
 	local recipe_ingredients = get_recipe_ingredients(recipe)
-	for i, ingredient in pairs(recipe_ingredients) do
-		local ingredientName = get_ingredient_name(ingredient)
-		if processedRecipes[ingredientName] == nil then
-			local ingredientRecipe = cached_recipes[ingredientName]
-			--print("Processing dependency: " .. dump(ingredientName) .. " " .. dump(ingredientRecipe))
-			processRecipe(ingredientRecipe)
+	if recipe_ingredients ~= nil then
+		--print("recipe_ingredients: " .. dump(recipe_ingredients))
+		if recipe_ingredients ~= nil and tablelength(recipe_ingredients) > 0 then
+			for i, ingredient in pairs(recipe_ingredients) do
+				local ingredientName = get_ingredient_name(ingredient)
+				--print("Ingredient: " .. dump(ingredientName))
+				if processedRecipes[ingredientName] == nil then
+					local ingredientRecipe = cached_recipes[ingredientName]
+					--print("Processing dependency: " .. dump(ingredientName) .. " " .. dump(ingredientRecipe))
+					if ingredientRecipe ~= nil then
+						processRecipe(ingredientRecipe)
+					end
+				end
+			end
 		end
 	end
 
@@ -634,26 +656,28 @@ function adjustRequiredIngredientAmount(recipe)
 
 	-- edit ingredient requirement amount
 	local recipe_ingredients = get_recipe_ingredients(recipe)
-	for i, ingredient in pairs(recipe_ingredients) do
-		--print("[adjustRequiredIngredientAmount] Adjusting ingredient " .. dump(ingredient))
-		-- get required amount
-		local amount = 1
-		if requirementCalculationType == "default" then
-			amount = getRequiredIngredientAmount(ingredient)
-		elseif requirementCalculationType == "custom" then
-			if ingredient["type"] == "fluid" then
-				amount = requirementCustomFluidAmount
+	if recipe_ingredients ~= nil and tablelength(recipe_ingredients) > 0 then
+		for i, ingredient in pairs(recipe_ingredients) do
+			--print("[adjustRequiredIngredientAmount] Adjusting ingredient " .. dump(ingredient))
+			-- get required amount
+			local amount = 1
+			if requirementCalculationType == "default" then
+				amount = getRequiredIngredientAmount(ingredient)
+			elseif requirementCalculationType == "custom" then
+				if ingredient["type"] == "fluid" then
+					amount = requirementCustomFluidAmount
+				else
+					amount = requirementCustomItemAmount
+				end
+			elseif requirementCalculationType == "total-required-ingredients" then
+				amount = get_total_ingredients_required(recipe)
 			else
-				amount = requirementCustomItemAmount
+				amount = getRequiredIngredientAmount(ingredient)
 			end
-		elseif requirementCalculationType == "total-required-ingredients" then
-			amount = get_total_ingredients_required(recipe)
-		else
-			amount = getRequiredIngredientAmount(ingredient)
-		end
 
-		-- change ingredient amount
-		setRequiredIngredientAmount(ingredient, amount)
+			-- change ingredient amount
+			setRequiredIngredientAmount(ingredient, amount)
+		end
 	end
 
 	logIndents = logIndents - 1
@@ -812,7 +836,7 @@ function adjustMiningDrill(item)
 	
 	local resource_searching_radius = item["resource_searching_radius"]
 	if resource_searching_radius == nil then
-		print(item["name"] .. " has no resource_searching_radius!")
+		--print(item["name"] .. " has no resource_searching_radius!")
 		return
 	end
 	
@@ -1099,24 +1123,26 @@ function getTotalItemsRequired(recipe, item_name)
 
 	-- edit ingredient requirement amount
 	local recipe_ingredients = get_recipe_ingredients(recipe)
-	for i, ingredient in pairs(recipe_ingredients) do
-		--print("[adjustRequiredIngredientAmount] Adjusting ingredient " .. dump(ingredient))
-		-- get required amount
-		local amount = 1
-		if requirementCalculationType == "default" then
-			amount = getRequiredIngredientAmount(ingredient)
-		elseif requirementCalculationType == "custom" then
-			if ingredient["type"] == "fluid" then
-				amount = requirementCustomFluidAmount
+	if recipe_ingredients ~= nil then
+		for i, ingredient in pairs(recipe_ingredients) do
+			--print("[adjustRequiredIngredientAmount] Adjusting ingredient " .. dump(ingredient))
+			-- get required amount
+			local amount = 1
+			if requirementCalculationType == "default" then
+				amount = getRequiredIngredientAmount(ingredient)
+			elseif requirementCalculationType == "custom" then
+				if ingredient["type"] == "fluid" then
+					amount = requirementCustomFluidAmount
+				else
+					amount = requirementCustomItemAmount
+				end
 			else
-				amount = requirementCustomItemAmount
+				amount = getRequiredIngredientAmount(ingredient)
 			end
-		else
-			amount = getRequiredIngredientAmount(ingredient)
-		end
 
-		-- change ingredient amount
-		setRequiredIngredientAmount(ingredient, amount)
+			-- change ingredient amount
+			setRequiredIngredientAmount(ingredient, amount)
+		end
 	end
 
 	logIndents = logIndents - 1
@@ -1191,7 +1217,7 @@ function getAdjustResearchCostAmount(current_amount)
 	end
 
 	-- return nothing
-	print("[getAdjustResearchCostAmount] undefined amount " .. dump(current_amount))
+	--print("[getAdjustResearchCostAmount] undefined amount " .. dump(current_amount))
 	return nil
 end
 
@@ -1203,6 +1229,7 @@ function getAdjustResearchCountAmount(current_amount)
 	end
 
 	-- return nothing
+	--print("[getAdjustResearchCountAmount] undefined amount " .. dump(researchCountCalculationType))
 	return nil
 end
 
@@ -1221,14 +1248,45 @@ end
 
 function adjustResearch(tech)
 	tech_unit = tech.unit -- https://wiki.factorio.com/Prototype/Technology#unit
-	print("[adjustResearch] " .. dump(tech_unit))
+	if tech_unit ~= nil then
+		--print("[adjustResearch] No unit for " .. dump(tech))
+		adjustResearchUnit(tech, tech_unit)
+	end
+	
+	if tech.research_trigger ~= nil then
+		--print("[adjustResearch] No research_trigger for " .. dump(tech))
+		local tech_trigger = tech.research_trigger
+		if tech_trigger ~= nil then
+			if tech_trigger.type == "craft-item" then
+				--print("[adjustResearch] craft-item " .. dump(tech))
+				local current_count = tech_trigger.count
+				if current_count == nil then
+					current_count = 1
+				end
+				
+				--print("researchCountMultiplier" .. dump(researchCountMultiplier) .. " researchMultiplier" .. dump(researchMultiplier) .. " current_count" .. dump(current_count))
+				local adjusted_count = getAdjustResearchCountAmount(current_count) * researchCountMultiplier * researchMultiplier
+				tech_trigger.count  = math.max(1, math.min(adjusted_count, 65535))
+			else
+				-- send-item-to-orbit
+				-- mine-entity
+				--print("[adjustResearch] trigger not handled " .. dump(tech_trigger) .. " for " .. dump(tech))
+			end
+		end
+	else
+		--print("[adjustResearch] No research_trigger for " .. dump(tech))
+	end
+end
+
+function adjustResearchUnit(tech, tech_unit)
+	--print("[adjustResearch] " .. dump(tech_unit))
 		
 	-- time
 	local current_time = tech_unit.time
 	local adjusted_time = getAdjustResearchTimeAmount(current_time) * researchTimeMultiplier * researchMultiplier * globalTimeMultiplier
 	tech_unit.time = adjusted_time
 
-	-- How many times we need to get craft the ingredients
+	-- How many times we need to get to craft the ingredients
 	if tech_unit.count ~= nil then
 		local current_count = tech_unit.count 
 		local adjusted_count = getAdjustResearchCountAmount(current_count) * researchCountMultiplier * researchMultiplier
@@ -1242,7 +1300,7 @@ function adjustResearch(tech)
 	-- How many of each ingredient are required
 	for index, ingredient in ipairs(tech_unit.ingredients) do
 		local current_cost = get_research_ingredient_cost(ingredient)
-		print("[adjustResearch] cost " .. dump(ingredient))
+		--print("[adjustResearch] cost " .. dump(ingredient))
 		local adjusted_cost = getAdjustResearchCostAmount(current_cost) * researchCostMultiplier * researchMultiplier * globalCostMultiplier
 		ingredient[2] = math.max(1, math.min(adjusted_cost, 65535))
 	end
@@ -1279,7 +1337,7 @@ function cacheRecipes()
 		if recipe.type == "recipe" then
 			local recipe_name = get_recipe_name(recipe)
 			if recipe_name then
-				--print(dump(recipe.subgroup) .. " " .. dump(recipe.category) .. " " .. dump(recipe.results))
+				--print("cached recipe: " .. dump(recipe_name))
 				cached_recipes[recipe_name] = recipe
 			else
 				--print("Skipped Recipe: " .. dump(recipe))
@@ -1293,6 +1351,7 @@ end
 function cacheItems(d)
 	for i, item in pairs(d) do
 		if type(item) == "table" then
+			--print("ITEM: " .. dump(item))
 			cached_items[item["name"]] = item
 		end	
 	end
@@ -1303,6 +1362,8 @@ end
 -- Start
 -------------------------------------------
 -------------------------------------------
+
+--print("STARTING: ")
 
 --
 -- Change Power
@@ -1326,14 +1387,16 @@ end
 --
 -- Change recipes
 --
+--print("Caching recipes")
 cacheRecipes()
 
+--print("Caching items")
 local items_types_to_cache = {"item", "gun", "ammo", "armor", "repair-tool", "tool", "item-with-entity-data", "capsule", "rail-planner", "module", "spidertron-remote", "fluid", "container", "electric-pole"}
 for i, value in ipairs(items_types_to_cache) do
-	local item = data.raw[value]
-	cacheItems(item)
+	local items = data.raw[value]
+	cacheItems(items)
 end
-
+ 
 --print(dump(data.raw.recipe))
 
 for recipe_name, recipe in pairs(cached_recipes) do
@@ -1350,6 +1413,7 @@ end
 local needsToEditResearch = researchRobotEditingEnabled or researchInserterEditingEnabled or researchEditingEnabled
 if needsToEditResearch then
 	for i, tech in pairs(data.raw.technology) do
+		--print("tech: " .. dump(tech))
 		adjustResearch(tech)
 	end
 end

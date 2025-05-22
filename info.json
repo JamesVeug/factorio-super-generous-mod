@@ -1,9 +1,9 @@
 {
   "name": "super-generous-recipes",
-  "version": "0.10.1",
+  "version": "1.0.0",
   "title": "Super Generous Recipes",
   "author": "M4pster",
-  "description": "Speeds up the game for a quicker experience. Lots of settings provided for customization.",
+  "description": "Provides options to modify crafting inputs, outputs, times, research and more!",
   "dependencies": ["base", 
 	"? Power Armor MK3", 
   	"? reverse-factory", 
@@ -56,5 +56,5 @@
 	"? Nanobots",
 	"? space-exploration-postprocess"
 ],
-  "factorio_version": "1.1"
+  "factorio_version": "2.0"
 }
