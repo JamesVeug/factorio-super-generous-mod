@@ -78,7 +78,7 @@ local researchTimeInfiniteCustomAmount = settings.startup["sgr-research-time-inf
 
 
 -- debug
-local enableLogs = false
+local enableLogs = true
 local logIndents = 0;
 
 -----------------------------
@@ -1191,6 +1191,7 @@ function getAdjustResearchCostAmount(current_amount)
 	end
 
 	-- return nothing
+	print("[getAdjustResearchCostAmount] undefined amount " .. dump(current_amount))
 	return nil
 end
 
@@ -1205,9 +1206,22 @@ function getAdjustResearchCountAmount(current_amount)
 	return nil
 end
 
+function get_research_ingredient_cost(data)
+	if data[2] ~= nil then
+		return data[2]
+	end
+
+	if data.amount ~= nil then
+		return data.amount
+	end
+
+	-- unhandled data type
+	return nil
+end
 
 function adjustResearch(tech)
 	tech_unit = tech.unit -- https://wiki.factorio.com/Prototype/Technology#unit
+	print("[adjustResearch] " .. dump(tech_unit))
 		
 	-- time
 	local current_time = tech_unit.time
@@ -1227,7 +1241,8 @@ function adjustResearch(tech)
 
 	-- How many of each ingredient are required
 	for index, ingredient in ipairs(tech_unit.ingredients) do
-		local current_cost = ingredient[2]
+		local current_cost = get_research_ingredient_cost(ingredient)
+		print("[adjustResearch] cost " .. dump(ingredient))
 		local adjusted_cost = getAdjustResearchCostAmount(current_cost) * researchCostMultiplier * researchMultiplier * globalCostMultiplier
 		ingredient[2] = math.max(1, math.min(adjusted_cost, 65535))
 	end

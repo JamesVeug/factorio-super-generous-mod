@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.10.1
+Date: 3. 7. 2023
+  Features:
+    - Settings now has icons to help explain what they are for
+  Fixed:
+    - Fixed Angel Refining mod crashing due to research cost format changed
+---------------------------------------------------------------------------------------------------
 Version: 0.10.0
 Date: 28. 5. 2023
   Features:
