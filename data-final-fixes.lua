@@ -992,6 +992,13 @@ function getRecipeOutputAmount(recipe, recipeOutput)
 		return recipeOutput.result_count
 	elseif recipeOutput.amount ~= nil then
 		return recipeOutput.amount
+	elseif recipeOutput.amount_min ~= nil then
+		if recipeOutput.amount_max ~= nil then
+			return {amount_min=recipeOutput.amount_min, amount_max=recipeOutput.amount_max}
+		end
+		return {amount_min=recipeOutput.amount_min}
+	elseif recipeOutput.amount_max ~= nil then
+		return {amount_max=recipeOutput.amount_max}
 	end
 
 	return 1 -- factorio default
@@ -1022,20 +1029,35 @@ function setRecipeCraftingTime(recipe, amount)
 end
 
 function setRecipeOutputAmount(recipe, recipeOutput, outputAmount)
-	-- recipeOutput = {"type":"item","name":"pamk3-battmk3","amount":5} 
+	-- recipeOutput = {"type":"item","name":"pamk3-battmk3","amount":5}
+	-- recipeOutput = {"type":"item","name":"pamk3-battmk3","amount_min":5, "amount_max":5}
 	-- amount = 10
 	-- receipe = {"type":"recipe","name":"rf-pamk3-pamk4","enabled":true,"energy_required":240,"ingredients":{"1":{"type":"item","name":"pamk3-pamk4","amount":2}},"requester_paste_multiplier":1,"icon":"__Power Armor MK3__/graphics/icons/pamk3-pamk4.png","icon_size":64,"icon_mipmaps":4,"category":"recycle-products","subgroup":"recycling","hidden":true,"allow_decomposition":false,"results":{"1":{"type":"item","name":"pamk3-pamk3","amount":1},"2":{"type":"item","name":"pamk3-battmk3","amount":5},"3":{"type":"item","name":"fusion-reactor-equipment","amount":2},"4":{"type":"item","name":"rocket-control-unit","amount":40},"5":{"type":"item","name":"low-density-structure","amount":200}}}
 	--print("[adjustRecipeOutput] Pre Output " .. dump(outputAmount) .. " of " .. " output: " .. dump(recipeOutput) .. " recipe: " .. dump(recipe))
 	logIndents = logIndents + 1
 
-	if type(recipeOutput) == 'table' and recipeOutput[2] ~= nil then
+	if type(recipeOutput) == 'table' and type(outputAmount) == 'table' then
+		for k,v in pairs(outputAmount) do
+			if recipeOutput[k] ~= nil then
+				recipeOutput[k] = v
+				--print("[adjustRecipeOutput] adjusted " .. k .. " to " .. dump(v) .. " in " .. dump(recipeOutput))
+			else
+				--print("[adjustRecipeOutput] could not find key " .. k .. " in recipe output: " .. dump(recipeOutput))
+			end
+		end
+		--print("[adjustRecipeOutput] adjusteda " .. dump(recipeOutput))
+	elseif type(recipeOutput) == 'table' and recipeOutput[2] ~= nil then
 		recipeOutput[2] = outputAmount
 		--print("[adjustRecipeOutput] adjusteda " .. dump(recipeOutput))
 	elseif type(recipeOutput) == 'table' and recipeOutput.amount ~= nil then
 		recipeOutput.amount = outputAmount
 		--print("[adjustRecipeOutput] adjustedb " .. dump(recipeOutput))
+	elseif type(recipeOutput) == 'table' and recipeOutput.amount_min ~= nil then
+		recipeOutput.amount_min = outputAmount
+		--print("[adjustRecipeOutput] adjustedb " .. dump(recipeOutput))
 	else
 		-- output tables that do not have 'amount' require the parent to have the 
+		--print("[adjustRecipeOutput] can not find existing amount: " .. dump(recipeOutput))
 		local ingredient_parent = get_recipe_ingredient_parent(recipe)
 		--print("[adjustRecipeOutput] adjustedc ingredient_parent " .. dump(ingredient_parent))
 		ingredient_parent.result_count = outputAmount
@@ -1071,10 +1093,11 @@ function adjustRecipeOutput(recipe, recipeOutput, outputItem)
 
 	-- Check if we should skip this recipe
 	local currentAmount = getRecipeOutputAmount(recipe, recipeOutput)
-	if currentAmount == 0 then
+	if type(currentAmount) ~= "table" and currentAmount == 0 then
 		--print("[adjustRecipeOutput] output set to 0... skipping in case this outputItem is not meant to be obtained")
 		return
 	end
+	--print("[adjustRecipeOutput] currentAMount:" .. dump(currentAmount) .. " for " .. dump(outputItemName))
 
 	-- get output amount
 	local amount = getAdjustRecipeOutputAmount(recipe, recipeOutput, outputItem, currentAmount)
@@ -1086,14 +1109,14 @@ function adjustRecipeOutput(recipe, recipeOutput, outputItem)
 
 	-- scale with multipliers
 	if itemIsFluid then
-		amount = amount * outputFluidMultiplier * globalMultiplier * globalOutputMultiplier
+		amount = multiple(amount, outputFluidMultiplier * globalMultiplier * globalOutputMultiplier)
 	else
-		amount = amount * outputItemMultiplier * globalMultiplier * globalOutputMultiplier
+		amount = multiple(amount, outputItemMultiplier * globalMultiplier * globalOutputMultiplier)
 	end
 
 	-- set the highest amount if we are allowed to
 	if globalOutputPrioritizeMax == true then
-		amount = math.max(amount, currentAmount)
+		amount = max(amount, currentAmount)
 	end
 
 	-- Make sure we always get more than is required to craft
@@ -1101,14 +1124,71 @@ function adjustRecipeOutput(recipe, recipeOutput, outputItem)
 		local maxRequirements = get_total_count_of_item_for_recipe(recipe, outputItemName)
 		--print("[adjustRecipeOutput] " .. dump(outputItemName) .. " amount = " .. amount .. " maxRequirements = " .. dump(maxRequirements))
 		if maxRequirements > 0 then
-			amount = math.max(amount, maxRequirements + 1)
+			amount = max(amount, maxRequirements + 1)
 		end
 	end
 
 	-- change amount and clamp to caps
-	local scaleOutput =  math.max(1, math.min(amount, 65535))
+	local scaleOutput = max(min(amount, 65535), 1)
 	--print("[adjustRecipeOutput] " .. dump(outputItemName) .. " = " .. scaleOutput)
 	setRecipeOutputAmount(recipe, recipeOutput, scaleOutput)
+end
+
+function multiple(value, scale)
+	if type(value) == "table" then
+		local newValue = {}
+		for k, v in pairs(value) do
+			newValue[k] = v * scale
+		end
+		return newValue
+	else
+		return value * scale
+	end
+end
+
+function max(value, value2)
+	if type(value) == "table" then
+		if type(value2) == "table" then
+			-- if both are tables then we need to compare each value
+			-- and return a new table with the max of each value
+			if tablelength(value) ~= tablelength(value2) then
+				--print("[max] Warning: trying to compare two tables of different lengths: " .. dump(value) .. " and " .. dump(value2))
+				return value -- return the first one if they are not the same length
+			end
+			
+			--print("[max] comparing two tables: " .. dump(value) .. " and " .. dump(value2))
+			-- compare each value in the table
+			local newValue = {}
+			for k, v in pairs(value) do
+				if value2[k] ~= nil then
+					newValue[k] = math.max(v, value2[k])
+				else
+					--print("[max] Warning: key " .. k .. " not found in second table: " .. dump(value2))
+					newValue[k] = v -- return the first one if the key is not found in the second table
+				end
+			end
+			return newValue
+		end
+		local newValue = {}
+		for k, v in pairs(value) do
+			newValue[k] = math.max(v, value2)
+		end
+		return newValue
+	else
+		return math.max(value, value2)
+	end
+end
+
+function min(value, value2)
+	if type(value) == "table" then
+		local newValue = {}
+		for k, v in pairs(value) do
+			newValue[k] = math.min(v, value2)
+		end
+		return newValue
+	else
+		return math.min(value, value2)
+	end
 end
 
 function getTotalItemsRequired(recipe, item_name)
@@ -1151,40 +1231,89 @@ end
 
 function getAdjustRecipeOutputAmount(recipe, recipeOutput, outputItem, currentAmount)
 	local itemIsFluid = outputItem["type"] == "fluid"
+	local currentAmountIsNumber = type(currentAmount) ~= "table"
 
-	-- fluid
-	if itemIsFluid then
-		if outputFluidCalculationType == "default" then
-			return currentAmount
-		elseif outputFluidCalculationType == "total-required-ingredients" then
-			return get_total_ingredients_required(recipe)
-		elseif outputFluidCalculationType == "stack-size" then
-			return outputItem["stack_size"]
-		elseif outputFluidCalculationType == "custom" then
-			return outputFluidCustomAmount
-		elseif outputFluidCalculationType == "max-recipe-uses" then
-			return get_total_recipies_using_this_recipe(recipe)
+	if currentAmountIsNumber then
+		-- fluid
+		if itemIsFluid then
+			if outputFluidCalculationType == "default" then
+				return currentAmount
+			elseif outputFluidCalculationType == "total-required-ingredients" then
+				return get_total_ingredients_required(recipe)
+			elseif outputFluidCalculationType == "stack-size" then
+				return outputItem["stack_size"]
+			elseif outputFluidCalculationType == "custom" then
+				return outputFluidCustomAmount
+			elseif outputFluidCalculationType == "max-recipe-uses" then
+				return get_total_recipies_using_this_recipe(recipe)
+			end
+
+			-- return nothing
+			return nil
 		end
 
+		-- items/tools/ammo... etc
+		if outputItemCalculationType == "default" then
+			return currentAmount
+		elseif outputItemCalculationType == "total-required-ingredients" then
+			return get_total_ingredients_required(recipe)
+		elseif outputItemCalculationType == "stack-size" then
+			return outputItem["stack_size"]
+		elseif outputItemCalculationType == "custom" then
+			return outputItemCustomAmount
+		elseif outputItemCalculationType == "max-recipe-uses" then
+			return get_total_recipies_using_this_recipe(recipe)
+		end
+		
 		-- return nothing
 		return nil
+	else
+		-- type is a table (We probably want a range of rewards but lets not do that
+		-- go through each key and set it to the assigned amount as a fallback
+
+		-- fluid
+		local scalar = 1
+		if itemIsFluid then
+			if outputFluidCalculationType == "default" then
+				return currentAmount
+			elseif outputFluidCalculationType == "total-required-ingredients" then
+				scalar = get_total_ingredients_required(recipe)
+			elseif outputFluidCalculationType == "stack-size" then
+				scalar = outputItem["stack_size"]
+			elseif outputFluidCalculationType == "custom" then
+				scalar = outputFluidCustomAmount
+			elseif outputFluidCalculationType == "max-recipe-uses" then
+				scalar = get_total_recipies_using_this_recipe(recipe)
+			end
+			
+			-- return nothing
+			return nil
+		else
+			-- items/tools/ammo... etc
+			if outputItemCalculationType == "default" then
+				return currentAmount
+			elseif outputItemCalculationType == "total-required-ingredients" then
+				scalar =  get_total_ingredients_required(recipe)
+			elseif outputItemCalculationType == "stack-size" then
+				scalar =  outputItem["stack_size"]
+			elseif outputItemCalculationType == "custom" then
+				scalar = outputItemCustomAmount
+			elseif outputItemCalculationType == "max-recipe-uses" then
+				scalar = get_total_recipies_using_this_recipe(recipe)
+			end
+			
+			-- return nothing
+			return nil
+		end
+		
+		local newValue = {}
+		for k, v in pairs(currentAmount) do
+			newValue[k] = scalar
+		end
+		
+		return newValue
 	end
 
-	-- items/tools/ammo... etc
-	if outputItemCalculationType == "default" then
-		return currentAmount
-	elseif outputItemCalculationType == "total-required-ingredients" then
-		return get_total_ingredients_required(recipe)
-	elseif outputItemCalculationType == "stack-size" then
-		return outputItem["stack_size"]
-	elseif outputItemCalculationType == "custom" then
-		return outputItemCustomAmount
-	elseif outputItemCalculationType == "max-recipe-uses" then
-		return get_total_recipies_using_this_recipe(recipe)
-	end
-
-	-- return nothing
-	return nil
 end
 
 function getAdjustResearchTimeAmount(currentAmount)
@@ -1389,6 +1518,7 @@ end
 --
 --print("Caching recipes")
 cacheRecipes()
+--print("CACHED RECIPES: " .. dump(cached_recipes))
 
 --print("Caching items")
 local items_types_to_cache = {"item", "gun", "ammo", "armor", "repair-tool", "tool", "item-with-entity-data", "capsule", "rail-planner", "module", "spidertron-remote", "fluid", "container", "electric-pole"}
