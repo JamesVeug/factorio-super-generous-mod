@@ -44,6 +44,16 @@ local stackSizeEditingEnabled = settings.startup["sgr-stacksize-item-edit"].valu
 local stackSizeItemAmount = settings.startup["sgr-stacksize-item"].value
 local stackSizeMultiplyByTotalIngredients = settings.startup["sgr-should-multiply-stacksize"].value
 
+local rocketWeightEditingEnabled = settings.startup["sgr-item-rocket-weight-edit"].value
+local rocketWeightMultiplier = settings.startup["sgr-item-rocket-weight-multiplier"].value
+local rocketWeightCalculationType = settings.startup["sgr-item-rocket-weight-type"].value
+local rocketWeightCustomAmount = settings.startup["sgr-item-rocket-weight-custom-amount"].value
+
+local spoilageEditingEnabled = settings.startup["sgr-spoilage-edit"].value
+local spoilageMultiplier = settings.startup["sgr-spoilage-time-multiplier"].value
+local spoilageCalculationType = settings.startup["sgr-spoilage-time-type"].value
+local spoilageCustomAmount = settings.startup["sgr-spoilage-time-custom-amount"].value
+
 local powerEditingEnabled = settings.startup["sgr-power-edit"].value
 local powerMultiplier = settings.startup["sgr-power-multiplier"].value
 local powerOutputMultiplier = settings.startup["sgr-power-output-multiplier"].value
@@ -57,10 +67,10 @@ local miningDrillSpeedMultiplier = settings.startup["sgr-mining-drill-speed-mult
 local miningDrillAreaMultiplier = settings.startup["sgr-mining-drill-area-multiplier"].value
 
 local researchRobotEditingEnabled = settings.startup["sgr-stacksize-robot-stacksize-research-edit"].value
-local researchRobotStacksizeBonus = settings.startup["sgr-stacksize-robot"].value
+local researchRobotStackSizeBonus = settings.startup["sgr-stacksize-robot"].value
 
 local researchInserterEditingEnabled = settings.startup["sgr-stacksize-inserter-stacksize-research-edit"].value
-local researchInserterStacksizeBonus = settings.startup["sgr-stacksize-inserter"].value
+local researchInserterStackSizeBonus = settings.startup["sgr-stacksize-inserter"].value
 local researchStackInserterStacksizeBonus = settings.startup["sgr-stacksize-stack-inserter"].value
 
 local researchEditingEnabled = settings.startup["sgr-research-edit"].value
@@ -78,7 +88,7 @@ local researchTimeInfiniteCustomAmount = settings.startup["sgr-research-time-inf
 
 
 -- debug
-local enableLogs = false
+local enableLogs = true
 local logIndents = 0;
 
 -----------------------------
@@ -563,6 +573,40 @@ function getRecipeOutputItemName(recipeOutputItem)
 
 	--print("Could not find outputItemName for " .. dump(recipeOutputItem))
 	return nil
+end
+
+function processItem (item_name, item)
+	if rocketWeightEditingEnabled ~= false then
+		if item["weight"] ~= nil then
+			local multiplier = rocketWeightMultiplier
+			local value = item["weight"]
+			if rocketWeightCalculationType == "custom" then
+				value = rocketWeightCustomAmount
+			end
+
+			local newValue = max(min(multiplier * value, 10000000), 1)
+			item["weight"] = newValue
+		end
+	end
+
+	if spoilageEditingEnabled ~= false then
+		if item["spoil_ticks"] ~= nil then
+			local multiplier = spoilageMultiplier
+			local value = item["spoil_ticks"]
+			if spoilageCalculationType == "custom" then
+				value = spoilageCustomAmount 
+			end
+			
+			local newValue = max(min(multiplier * value, 65535), 0)
+			if newValue > 0 then
+				item["spoil_ticks"] = newValue
+			else
+				item["spoil_ticks"] = nil
+				item["spoil_result"] = nil
+			end
+			
+		end
+	end
 end
 
 -- Set all amount of ingredients to 1
@@ -1440,7 +1484,7 @@ function adjustResearchUnit(tech, tech_unit)
 				if researchInserterEditingEnabled then
 					-- increase inserter stack size bonus
 					if effect.type == "stack-inserter-capacity-bonus" then
-						effect.modifier = effect.modifier * researchInserterStacksizeBonus
+						effect.modifier = effect.modifier * researchInserterStackSizeBonus
 					elseif effect.type == "inserter-stack-size-bonus" then
 						effect.modifier = effect.modifier * researchStackInserterStacksizeBonus
 				end
@@ -1448,7 +1492,7 @@ function adjustResearchUnit(tech, tech_unit)
 				if researchRobotEditingEnabled then
 					-- robot stack size bonus
 					if effect.type == "worker-robot-storage" then
-						effect.modifier = effect.modifier * researchRobotStacksizeBonus
+						effect.modifier = effect.modifier * researchRobotStackSizeBonus
 					end
 				end
 			end
@@ -1466,7 +1510,7 @@ function cacheRecipes()
 		if recipe.type == "recipe" then
 			local recipe_name = get_recipe_name(recipe)
 			if recipe_name then
-				--print("cached recipe: " .. dump(recipe_name))
+				print("cached recipe: " .. dump(recipe_name))
 				cached_recipes[recipe_name] = recipe
 			else
 				--print("Skipped Recipe: " .. dump(recipe))
@@ -1480,7 +1524,7 @@ end
 function cacheItems(d)
 	for i, item in pairs(d) do
 		if type(item) == "table" then
-			--print("ITEM: " .. dump(item))
+			print("ITEM: " .. dump(item))
 			cached_items[item["name"]] = item
 		end	
 	end
@@ -1516,6 +1560,14 @@ end
 --
 -- Change recipes
 --
+for recipe_name, recipe in pairs(data) do
+	print("data: " .. dump(recipe_name))
+end
+print("data.extend: " .. dump(data.extend))
+for recipe_name, recipe in pairs(data.raw) do
+	print("data.raw: " .. dump(recipe_name))
+end
+
 --print("Caching recipes")
 cacheRecipes()
 --print("CACHED RECIPES: " .. dump(cached_recipes))
@@ -1525,6 +1577,10 @@ local items_types_to_cache = {"item", "gun", "ammo", "armor", "repair-tool", "to
 for i, value in ipairs(items_types_to_cache) do
 	local items = data.raw[value]
 	cacheItems(items)
+end
+
+for item_name, item in pairs(cached_items) do
+	processItem(item_name, item)
 end
  
 --print(dump(data.raw.recipe))
