@@ -13,6 +13,7 @@ data:extend(
 		setting_type = "startup",
 		default_value = 1,
         minimum_value = 0.00001,
+        maximum_value = 65535,
 		order = "1.1"
 	},
 	{
@@ -21,6 +22,7 @@ data:extend(
 		setting_type = "startup",
 		default_value = 1,
 		minimum_value = 0.00001,
+		maximum_value = 65535,
 		order = "1.2"
 	},
 	{
@@ -29,6 +31,7 @@ data:extend(
 		setting_type = "startup",
 		default_value = 1,
 		minimum_value = 0.00001,
+		maximum_value = 65535,
 		order = "1.3"
 	},
 	{
@@ -37,6 +40,7 @@ data:extend(
 		setting_type = "startup",
 		default_value = 1,
 		minimum_value = 0.00001,
+		maximum_value = 65535,
 		order = "1.4"
 	},
 	{
@@ -65,6 +69,8 @@ data:extend(
 		name = "sgr-stacksize-item",
 		setting_type = "startup",
 		default_value = 50,
+		minimum_value = 1,
+		maximum_value = 65535,
 		order = "2.1"
 	},
 	{
@@ -102,6 +108,8 @@ data:extend(
 		name = "sgr-stacksize-inserter",
 		setting_type = "startup",
 		default_value = 20,
+		minimum_value = 1,
+		maximum_value = 65535,
 		order = "2.6"
 	},
 	{
@@ -109,6 +117,8 @@ data:extend(
 		name = "sgr-stacksize-stack-inserter",
 		setting_type = "startup",
 		default_value = 50,
+		minimum_value = 1,
+		maximum_value = 65535,
 		order = "2.7"
 	},
 	{
@@ -116,7 +126,7 @@ data:extend(
 		name = "sgr-output-item-edit",
 		setting_type = "startup",
 		default_value = true,
-		order = "3.1"
+		order = "3.0"
 	},
 	{
 	    type = "double-setting",
@@ -206,6 +216,8 @@ data:extend(
 	    name = "sgr-requirement-item-amount",
 	    setting_type = "startup",
         default_value = 1,
+        minimum_value = 1,
+        maximum_value = 65535,
 		order = "5.3"
 	},
 	{
@@ -213,6 +225,8 @@ data:extend(
 	    name = "sgr-requirement-fluid-amount",
 	    setting_type = "startup",
         default_value = 1,
+        minimum_value = 1,
+        maximum_value = 65535,
 		order = "5.4"
 	},
 	{
@@ -283,6 +297,20 @@ data:extend(
 	},
 	{
 		type = "bool-setting",
+		name = "sgr-item-rocket-weight-preserve-heavy",
+		setting_type = "startup",
+		default_value = true,
+		order = "7.4"
+	},
+	{
+		type = "bool-setting",
+		name = "sgr-item-rocket-weight-derive-missing",
+		setting_type = "startup",
+		default_value = true,
+		order = "7.5"
+	},
+	{
+		type = "bool-setting",
 		name = "sgr-spoilage-edit",
 		setting_type = "startup",
 		default_value = false,
@@ -311,7 +339,7 @@ data:extend(
 		setting_type = "startup",
 		default_value = 1,
 		minimum_value = 0,
-		maximum_value = 65535,
+		maximum_value = 4294967295,
 		order = "8.3a",
 	},
 	{
@@ -373,7 +401,7 @@ data:extend(
 		default_value = 1,
 		minimum_value = 0.00001,
 		maximum_value = 65535,
-		order = "9.5"
+		order = "9.6"
 	},
 	{
 		type = "bool-setting",
@@ -499,6 +527,8 @@ data:extend(
 	    name = "sgr-research-time-infinite-custom-amount",
 	    setting_type = "startup",
         default_value = "L",
+        allow_blank = false,
+        auto_trim = true,
 		order = "11.9b"
 	},
 })

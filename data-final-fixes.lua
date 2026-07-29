@@ -48,6 +48,8 @@ local rocketWeightEditingEnabled = settings.startup["sgr-item-rocket-weight-edit
 local rocketWeightMultiplier = settings.startup["sgr-item-rocket-weight-multiplier"].value
 local rocketWeightCalculationType = settings.startup["sgr-item-rocket-weight-type"].value
 local rocketWeightCustomAmount = settings.startup["sgr-item-rocket-weight-custom-amount"].value
+local rocketWeightPreserveHeavy = settings.startup["sgr-item-rocket-weight-preserve-heavy"].value
+local rocketWeightDeriveMissing = settings.startup["sgr-item-rocket-weight-derive-missing"].value
 
 local spoilageEditingEnabled = settings.startup["sgr-spoilage-edit"].value
 local spoilageMultiplier = settings.startup["sgr-spoilage-time-multiplier"].value
@@ -86,16 +88,46 @@ local researchTimeCalculationType = settings.startup["sgr-research-time-type"].v
 local researchTimeCustomAmount = settings.startup["sgr-research-time-custom-amount"].value
 local researchTimeInfiniteCustomAmount = settings.startup["sgr-research-time-infinite-custom-amount"].value
 
+-- Not a setting - read from data.raw. Factorio will not load an item heavier than this into a
+-- rocket at all, it shows "This item weight exceeds the rocket capacity" instead. Core defaults it
+-- to 1000000 (1 tonne). Read rather than hardcoded so mods that raise the limit are respected.
+local rocketLiftWeight = 1000000
+local utilityConstants = data.raw["utility-constants"] and data.raw["utility-constants"]["default"]
+if utilityConstants ~= nil and type(utilityConstants["rocket_lift_weight"]) == "number" and utilityConstants["rocket_lift_weight"] > 0 then
+	rocketLiftWeight = utilityConstants["rocket_lift_weight"]
+end
+
+
+
+-- Everything below is file-local. The data stage shares one Lua state across
+-- every mod, so anything global here would leak into mods loaded after us.
+-- Forward-declared in one block so the definitions below can stay in source
+-- order and still recurse into each other.
+local print, tablelength, dump, get_stack_size_of_item, get_recipe_name, get_ingredient_name,
+      get_ingredient_type, get_recipe_ingredient_parent, get_recipe_ingredients, get_ingredient_depth,
+      get_total_recipies_using_this_recipe, calculate_recipes_uses, calculate_ingredient_depth,
+      get_total_ingredients_required, calculate_total_ingredients, get_total_count_of_item_for_recipe,
+      calculate_total_ingredient_data, getRecipeResults, getRecipeOutputItemName, processItem,
+      deriveMissingRocketWeight,
+      processRecipe, adjustRequiredIngredientAmount, setRequiredIngredientAmount,
+      getRequiredIngredientAmount, adjustCraftingTime, isItemStackable, adjustItemStackSize,
+      adjustMiningDrill, adjustPower, convert_power, scale_energy_string_using_multiplier,
+      get_watt_multiplier_from_string, convert_number_to_watt_string, getRecipeOutputAmount,
+      getRecipeCraftingTime, setRecipeCraftingTime, setRecipeOutputAmount, adjustRecipeOutput,
+      multiple, max, min, getTotalItemsRequired, getAdjustRecipeOutputAmount,
+      getAdjustResearchTimeAmount, getAdjustResearchTimeFormulaAmount, getAdjustResearchCostAmount,
+      getAdjustResearchCountAmount, get_research_ingredient_cost, adjustResearch, adjustResearchUnit,
+      cacheRecipes, cacheItems
 
 -- debug
-local enableLogs = true
+local enableLogs = false
 local logIndents = 0;
 
 -----------------------------
 -- Helper functions
 -----------------------------
 
-function print(s)
+print = function(s)
 	if enableLogs then
 		for i = 1, logIndents, 1 do
 			s = "  " .. s
@@ -105,13 +137,13 @@ function print(s)
 	end
 end
 
-function tablelength(T)
+tablelength = function(T)
   local count = 0
   for _ in pairs(T) do count = count + 1 end
   return count
 end
 
-function dump(o)
+dump = function(o)
 	if enableLogs == false then
 		return ''
 	end
@@ -127,7 +159,7 @@ function dump(o)
 		for k,v in pairs(o) do
 			k = '"' .. dump(k) .. '"'
 
-			v_string = dump(v)
+			local v_string = dump(v)
 			if type(v) ~= 'table' and type(v) ~= 'number' and type(v) ~= 'boolean' then
 				v_string = '"' .. v_string .. '"'
 			end
@@ -145,7 +177,7 @@ function dump(o)
 	end
 end
 
-function get_stack_size_of_item (item_name)
+get_stack_size_of_item = function(item_name)
 	local item = cached_items[item_name]
 	if item == nil then
 		--print("LOG: Unable to get stack_size for: " .. item_name)
@@ -155,7 +187,7 @@ function get_stack_size_of_item (item_name)
 	end
 end
 
-function get_recipe_name(recipe)
+get_recipe_name = function(recipe)
 	if recipe.name then
 		return recipe.name
 	elseif recipe.result then
@@ -167,7 +199,7 @@ function get_recipe_name(recipe)
 	end
 end
 
-function get_ingredient_name(ingredient)
+get_ingredient_name = function(ingredient)
 	local ingredient_name = ingredient["name"]
 	if ingredient_name ~= nil then
 		return ingredient_name
@@ -180,7 +212,7 @@ function get_ingredient_name(ingredient)
 	end
 end
 
-function get_ingredient_type(ingredient)
+get_ingredient_type = function(ingredient)
 	local ingredient_type = ingredient["type"]
 	if ingredient_type ~= nil then
 		return ingredient_type
@@ -199,7 +231,7 @@ function get_ingredient_type(ingredient)
 	return ingredient_item["type"]
 end
 
-function get_recipe_ingredient_parent(recipe)
+get_recipe_ingredient_parent = function(recipe)
 
 	if recipe.ingredients then
 		return recipe
@@ -212,7 +244,7 @@ function get_recipe_ingredient_parent(recipe)
 end
 
 
-function get_recipe_ingredients(recipe)
+get_recipe_ingredients = function(recipe)
 	local ingredient_parent = get_recipe_ingredient_parent(recipe)
 	--print("ingredient_parent: " .. dump(ingredient_parent))
 	if ingredient_parent ~= nil then
@@ -224,7 +256,7 @@ function get_recipe_ingredients(recipe)
 end
 
 
-function get_ingredient_depth(recipe, optional_recipes_being_calculated)
+get_ingredient_depth = function(recipe, optional_recipes_being_calculated)
 	local recipe_name = get_recipe_name(recipe)
 
 	-- check if cached
@@ -238,7 +270,7 @@ function get_ingredient_depth(recipe, optional_recipes_being_calculated)
 	return calculate_ingredient_depth(recipe, optional_recipes_being_calculated or {})
 end
 
-function get_total_recipies_using_this_recipe(recipe, optional_recipes_being_calculated)
+get_total_recipies_using_this_recipe = function(recipe, optional_recipes_being_calculated)
 	local recipe_name = get_recipe_name(recipe)
 
 	-- get from cache
@@ -267,7 +299,7 @@ function get_total_recipies_using_this_recipe(recipe, optional_recipes_being_cal
 	return uses
 end
 
-function calculate_recipes_uses(recipe, recipes_tried)
+calculate_recipes_uses = function(recipe, recipes_tried)
 	local recipe_name = get_recipe_name(recipe)
 	recipes_tried[recipe] = true
 
@@ -294,7 +326,7 @@ function calculate_recipes_uses(recipe, recipes_tried)
 	return math.max(uses, 1)
 end
 
-function calculate_ingredient_depth(recipe, recipes_tried)
+calculate_ingredient_depth = function(recipe, recipes_tried)
 	local recipe_name = get_recipe_name(recipe)
 	--print("Calculating calculate_ingredient_depth: " .. dump(recipe_name) .. " " .. dump(recipe))
 	recipes_tried[recipe] = true
@@ -332,7 +364,7 @@ end
 -- @param recipe The recipe we want to get the amount of
 -- @param[opt] Used for calculating the amount if it's unknown.
 -- @return Total amount required
-function get_total_ingredients_required (recipe, optional_recipes_being_calculated)
+get_total_ingredients_required = function(recipe, optional_recipes_being_calculated)
 	local recipe_name = get_recipe_name(recipe)
 
 	-- get from cache if we can
@@ -346,7 +378,7 @@ function get_total_ingredients_required (recipe, optional_recipes_being_calculat
 	return total
 end
 
-function calculate_total_ingredients(recipe, recipes_tried)
+calculate_total_ingredients = function(recipe, recipes_tried)
 	-- flame ammo = crude oil + steel bar
 	-- steel bar = iron bar
 	local recipe_name = get_recipe_name(recipe)
@@ -392,7 +424,7 @@ function calculate_total_ingredients(recipe, recipes_tried)
 end
 
 -- given an ingredient we want to know how much of said ingredient is required to make this recipe
-function get_total_count_of_item_for_recipe (recipe, item_name, optional_recipes_being_calculated)
+get_total_count_of_item_for_recipe = function(recipe, item_name, optional_recipes_being_calculated)
 	local recipe_name = get_recipe_name(recipe)
 
 	-- get from cache if we can
@@ -412,7 +444,7 @@ function get_total_count_of_item_for_recipe (recipe, item_name, optional_recipes
 	return ingredient_requirement_amount
 end
 
-function calculate_total_ingredient_data(recipe, recipes_tried)
+calculate_total_ingredient_data = function(recipe, recipes_tried)
 	-- flame ammo = crude oil + steel bar
 	-- steel bar = iron bar
 	local recipe_name = get_recipe_name(recipe)
@@ -516,7 +548,7 @@ end
 -- returns parsed data according to what was already in existent
 -- returns the name of the recipe output as well as the original table reference
 -- returns {name: "x", output: {...}}
-function getRecipeResults(recipe)
+getRecipeResults = function(recipe)
 	local ingredient_parent = get_recipe_ingredient_parent(recipe)
 	if ingredient_parent == nil then
 		return nil
@@ -550,7 +582,7 @@ function getRecipeResults(recipe)
 	return nil
 end
 
-function getRecipeOutputItemName(recipeOutputItem)
+getRecipeOutputItemName = function(recipeOutputItem)
 	local recipeOutput = recipeOutputItem["output"]
 	if recipeOutput ~= nil then
 		if type(recipeOutput) == 'table' then
@@ -575,17 +607,32 @@ function getRecipeOutputItemName(recipeOutputItem)
 	return nil
 end
 
-function processItem (item_name, item)
+processItem = function(item_name, item)
 	if rocketWeightEditingEnabled ~= false then
 		if item["weight"] ~= nil then
 			local multiplier = rocketWeightMultiplier
-			local value = item["weight"]
-			if rocketWeightCalculationType == "custom" then
-				value = rocketWeightCustomAmount
-			end
+			local originalValue = item["weight"]
 
-			local newValue = max(min(multiplier * value, 10000000), 1)
-			item["weight"] = newValue
+			-- items that are already too heavy to launch in vanilla are that way on purpose
+			-- (rocket silo at 10t, atomic bomb at 1.5t). leave them completely alone - capping
+			-- them at their original weight is not enough, a multiplier below 1 would still
+			-- drag them under the lift limit and make them launchable.
+			local preserved = rocketWeightPreserveHeavy ~= false
+				and type(originalValue) == "number"
+				and originalValue > rocketLiftWeight
+
+			if not preserved then
+				local value = originalValue
+				if rocketWeightCalculationType == "custom" then
+					value = rocketWeightCustomAmount
+				end
+
+				-- never push an item past the rocket lift limit or it can no longer be launched at all.
+				-- lots of vanilla items sit at exactly 1 tonne (satellite, spidertron, space platform hub)
+				-- so even a multiplier of 2 would strand them.
+				local newValue = max(min(multiplier * value, rocketLiftWeight), 1)
+				item["weight"] = newValue
+			end
 		end
 	end
 
@@ -597,22 +644,47 @@ function processItem (item_name, item)
 				value = spoilageCustomAmount 
 			end
 			
-			local newValue = max(min(multiplier * value, 65535), 0)
+			local newValue = math.floor(max(min(multiplier * value, 4294967295), 0))
 			if newValue > 0 then
 				item["spoil_ticks"] = newValue
 			else
 				item["spoil_ticks"] = nil
 				item["spoil_result"] = nil
 			end
-			
+
 		end
 	end
+end
+
+deriveMissingRocketWeight = function(item)
+	if item == nil or item["weight"] ~= nil then
+		return
+	end
+
+	local stack_size = tonumber(item["stack_size"])
+	if stack_size == nil or stack_size < 1 then
+		return
+	end
+
+	-- with the multiplier at 1 the engine's own derivation already scales with the stack size,
+	-- and it knows the real recipe - leave it be rather than replacing it with a guess
+	if rocketWeightCalculationType ~= "custom" and rocketWeightMultiplier == 1 then
+		return
+	end
+
+	local value = rocketLiftWeight / stack_size
+	if rocketWeightCalculationType == "custom" then
+		value = rocketWeightCustomAmount
+	end
+
+	--print("[deriveMissingRocketWeight] " .. dump(item["name"]) .. " stack_size " .. dump(stack_size))
+	item["weight"] = max(min(rocketWeightMultiplier * value, rocketLiftWeight), 1)
 end
 
 -- Set all amount of ingredients to 1
 -- Set total output to total amount of ingredients required
 -- Set stack_size to total output * 50
-function processRecipe (recipe)
+processRecipe = function(recipe)
 	if recipe == nil then
 		return
 	end
@@ -688,7 +760,7 @@ function processRecipe (recipe)
 	logIndents = logIndents - 1
 end
 
-function adjustRequiredIngredientAmount(recipe)
+adjustRequiredIngredientAmount = function(recipe)
 	-- make sure we can edit the requirement amount
 	local canEdit = requirementEditingEnabled
 	if canEdit == false then
@@ -728,7 +800,7 @@ function adjustRequiredIngredientAmount(recipe)
 	--print("[adjustRequiredIngredientAmount] " .. dump(get_recipe_name(recipe)) .. " requirements adjusted to " .. dump(recipe))
 end
 
-function setRequiredIngredientAmount(ingredient, amount)
+setRequiredIngredientAmount = function(ingredient, amount)
 	local scaledAmount = amount * globalMultiplier * requirementMultiplier * globalCostMultiplier
 
 	-- factorio requires minimum of 1
@@ -754,7 +826,7 @@ function setRequiredIngredientAmount(ingredient, amount)
 	--print("[adjustRequiredIngredientAmount] Adjusted ingredient " .. dump(ingredient) .. " to " .. dump(ingredientAmount))
 end
 
-function getRequiredIngredientAmount(ingredient)
+getRequiredIngredientAmount = function(ingredient)
 	-- true  = {"1":{"1":"stone-brick"}}
 	-- false = {"1":{"name":"stone-brick", "amount":5}}
 	local isSimpleTable = ingredient["name"] == nil -- {"1":{"1":"stone-brick"}}
@@ -770,7 +842,7 @@ function getRequiredIngredientAmount(ingredient)
 	end
 end
 
-function adjustCraftingTime(recipe)
+adjustCraftingTime = function(recipe)
 	-- make sure we can edit the crafting time
 	local canEdit = timeEditingEnabled
 	if canEdit == false and globalTimeMultiplier == 1 then
@@ -805,7 +877,7 @@ function adjustCraftingTime(recipe)
 	setRecipeCraftingTime(recipe, scaledAmount)
 end
 
-function isItemStackable(item)
+isItemStackable = function(item)
 	if item.stack_size ~= nil then
 		-- for some reason there is string type stack_size in some mod
 		local stack_size = tonumber(item.stack_size)
@@ -833,7 +905,7 @@ function isItemStackable(item)
     return true
 end
 
-function adjustItemStackSize(item, recipe)
+adjustItemStackSize = function(item, recipe)
 	--print("Processing stack_size: " .. dump(item))
 	if isItemStackable(item) == false then
 		--print(item["name"] .. " is not stackable... skipping stack size!")
@@ -870,7 +942,7 @@ function adjustItemStackSize(item, recipe)
 	--print("[adjustItemStackSize] Setting stacksize of " .. dump(item["name"]) .. " to " .. dump(stack_size))
 end
 
-function adjustMiningDrill(item)
+adjustMiningDrill = function(item)
 	-- make sure we can edit the mining speed
 	local mining_speed = item["mining_speed"]
 	if mining_speed == nil then
@@ -891,7 +963,7 @@ function adjustMiningDrill(item)
 	
 end
 
-function adjustPower(item)
+adjustPower = function(item)
 	-- make sure we can edit the power
 	local energy_source = item["energy_source"]
 	if energy_source == nil then
@@ -922,7 +994,7 @@ function adjustPower(item)
 	-- power output for buildings to avoid changing temporature and whatnot
 	local itemEffectivity = item["effectivity"]
 	if itemEffectivity ~= nil then
-		new_effectivity = itemEffectivity * powerMultiplier * powerOutputMultiplier
+		local new_effectivity = itemEffectivity * powerMultiplier * powerOutputMultiplier
 		--print("[adjustPower] itemEffectivity set to " .. dump(new_effectivity) .. " from " .. dump(itemEffectivity))
 		item["effectivity"] = new_effectivity
 	end
@@ -930,7 +1002,7 @@ function adjustPower(item)
 	-- nuclear reactor
 	local sourceEffectivity = energy_source["effectivity"]
 	if sourceEffectivity ~= nil then
-		new_effectivity = sourceEffectivity * powerMultiplier * powerOutputMultiplier
+		local new_effectivity = sourceEffectivity * powerMultiplier * powerOutputMultiplier
 		--print("[adjustPower] sourceEffectivity set to " .. dump(new_effectivity) .. " from " .. dump(sourceEffectivity))
 		energy_source["effectivity"] = new_effectivity
 	end
@@ -948,12 +1020,12 @@ function adjustPower(item)
 	--print("[adjustPower] finished editting power for " .. dump(item["name"]) .. " " .. dump(item))
 end
 
-function convert_power(key_name, item, multiplier)
+convert_power = function(key_name, item, multiplier)
 	local input_string = item[key_name] -- "90mW"
 	if input_string ~= nil then
 		--print("[adjustPower] multiplying " .. key_name .. ": " .. dump(input_string))
-		final_multiplier = powerMultiplier * multiplier
-		new_input_string = scale_energy_string_using_multiplier(input_string, final_multiplier)
+		local final_multiplier = powerMultiplier * multiplier
+		local new_input_string = scale_energy_string_using_multiplier(input_string, final_multiplier)
 
 		--print("[adjustPower] " .. key_name .. " set to " .. dump(new_input_string) .. " from " .. dump(input_string))
 		item[key_name] = new_input_string
@@ -971,22 +1043,22 @@ local watt_to_multiplier = {
 	["Y"] = 1000000000000000000000,
 }
 
-function scale_energy_string_using_multiplier(energy_string, multiplier)
+scale_energy_string_using_multiplier = function(energy_string, multiplier)
 	-- energy_string = 40MW
-	energy_usage = tonumber(string.match(energy_string, '%d[%d.]*')) -- 40
+	local energy_usage = tonumber(string.match(energy_string, '%d[%d.]*')) -- 40
 	energy_usage = energy_usage * get_watt_multiplier_from_string(energy_string) -- 40,000
-	new_energy_usage = energy_usage * multiplier -- 40,000,000
+	local new_energy_usage = energy_usage * multiplier -- 40,000,000
 	--print("[scale_energy_string_using_multiplier] new_energy_usage " .. dump(new_energy_usage))
 
-	new_energy_usage_string = convert_number_to_watt_string(new_energy_usage) -- 40G
+	local new_energy_usage_string = convert_number_to_watt_string(new_energy_usage) -- 40G
 
-	energy_usage_type = string.sub(energy_string, -1) -- W/J
-	final_energy_string = new_energy_usage_string .. energy_usage_type -- 40GW/40GJ
+	local energy_usage_type = string.sub(energy_string, -1) -- W/J
+	local final_energy_string = new_energy_usage_string .. energy_usage_type -- 40GW/40GJ
 	--print("[scale_energy_string_using_multiplier] final_energy_string: " .. dump(final_energy_string))
 	return final_energy_string
 end
 
-function get_watt_multiplier_from_string(value_string)
+get_watt_multiplier_from_string = function(value_string)
 	local energy_type = string.sub(string.sub(value_string, -2), 1, 1) -- W/J
 	local multiplier = watt_to_multiplier[energy_type]
 	if multiplier ~= nil then
@@ -996,7 +1068,7 @@ function get_watt_multiplier_from_string(value_string)
 	return 1
 end
 
-function convert_number_to_watt_string(value)
+convert_number_to_watt_string = function(value)
 	--print("[convert_number_to_watt_string] converting " .. dump(value))
 
 	-- convert 1900000 to 1.9mw
@@ -1011,21 +1083,21 @@ function convert_number_to_watt_string(value)
 	--print("[convert_number_to_watt_string] largest_multiplier " .. dump(largest_multiplier) .. dump(largest_multiplier_suffix))
 
 	if largest_multiplier_suffix == "k" then
-		final_string_value = tostring(value) .. tostring(largest_multiplier_suffix) -- 900k
+		local final_string_value = tostring(value) .. tostring(largest_multiplier_suffix) -- 900k
 		--print("[convert_number_to_watt_string] skipping convertion because too smaller than kw: " .. dump(final_string_value))
 		return final_string_value
 	end
 
-	smaller_value = value / largest_multiplier --1.9
-	final_value = math.min(math.max(1, smaller_value), 999)
+	local smaller_value = value / largest_multiplier --1.9
+	local final_value = math.min(math.max(1, smaller_value), 999)
 
 	--print("[convert_number_to_watt_string] final_value " .. dump(final_value))
-	final_string_value = tostring(final_value) .. tostring(largest_multiplier_suffix) -- 1.9m
+	local final_string_value = tostring(final_value) .. tostring(largest_multiplier_suffix) -- 1.9m
 	--print("[convert_number_to_watt_string] final_string_value " .. dump(final_string_value))
 	return final_string_value
 end
 
-function getRecipeOutputAmount(recipe, recipeOutput)
+getRecipeOutputAmount = function(recipe, recipeOutput)
 	if recipe.result_count ~= nil then
 		return recipe.result_count
 	elseif recipe.amount ~= nil then
@@ -1048,7 +1120,7 @@ function getRecipeOutputAmount(recipe, recipeOutput)
 	return 1 -- factorio default
 end
 
-function getRecipeCraftingTime(recipe)
+getRecipeCraftingTime = function(recipe)
 	if recipe.normal and recipe.normal.energy_required then
 		return recipe.normal.energy_required
 	elseif recipe.energy_required then
@@ -1058,7 +1130,7 @@ function getRecipeCraftingTime(recipe)
 	return 0.5 -- factorio default
 end
 
-function setRecipeCraftingTime(recipe, amount)
+setRecipeCraftingTime = function(recipe, amount)
 	local scaledTime = amount * globalMultiplier * timeMultiplier
 	local t = math.min(math.max(0.1, scaledTime), 65535)
 
@@ -1072,7 +1144,7 @@ function setRecipeCraftingTime(recipe, amount)
 	--print(dump(get_recipe_name(recipe)) .. " crafting time = " .. dump(t) .. " " .. dump(recipe))
 end
 
-function setRecipeOutputAmount(recipe, recipeOutput, outputAmount)
+setRecipeOutputAmount = function(recipe, recipeOutput, outputAmount)
 	-- recipeOutput = {"type":"item","name":"pamk3-battmk3","amount":5}
 	-- recipeOutput = {"type":"item","name":"pamk3-battmk3","amount_min":5, "amount_max":5}
 	-- amount = 10
@@ -1113,7 +1185,7 @@ function setRecipeOutputAmount(recipe, recipeOutput, outputAmount)
 end
 
 
-function adjustRecipeOutput(recipe, recipeOutput, outputItem)
+adjustRecipeOutput = function(recipe, recipeOutput, outputItem)
 	--print("[adjustRecipeOutput] outputItem " .. dump(outputItem))
 	local outputItemName = get_recipe_name(outputItem)
 
@@ -1178,7 +1250,7 @@ function adjustRecipeOutput(recipe, recipeOutput, outputItem)
 	setRecipeOutputAmount(recipe, recipeOutput, scaleOutput)
 end
 
-function multiple(value, scale)
+multiple = function(value, scale)
 	if type(value) == "table" then
 		local newValue = {}
 		for k, v in pairs(value) do
@@ -1190,7 +1262,7 @@ function multiple(value, scale)
 	end
 end
 
-function max(value, value2)
+max = function(value, value2)
 	if type(value) == "table" then
 		if type(value2) == "table" then
 			-- if both are tables then we need to compare each value
@@ -1223,7 +1295,7 @@ function max(value, value2)
 	end
 end
 
-function min(value, value2)
+min = function(value, value2)
 	if type(value) == "table" then
 		local newValue = {}
 		for k, v in pairs(value) do
@@ -1235,7 +1307,7 @@ function min(value, value2)
 	end
 end
 
-function getTotalItemsRequired(recipe, item_name)
+getTotalItemsRequired = function(recipe, item_name)
 	-- make sure we can edit the requirement amount
 	local canEdit = requirementEditingEnabled
 	if canEdit == false then
@@ -1273,7 +1345,7 @@ function getTotalItemsRequired(recipe, item_name)
 	--print("[adjustRequiredIngredientAmount] " .. dump(get_recipe_name(recipe)) .. " requirements adjusted to " .. dump(recipe))
 end
 
-function getAdjustRecipeOutputAmount(recipe, recipeOutput, outputItem, currentAmount)
+getAdjustRecipeOutputAmount = function(recipe, recipeOutput, outputItem, currentAmount)
 	local itemIsFluid = outputItem["type"] == "fluid"
 	local currentAmountIsNumber = type(currentAmount) ~= "table"
 
@@ -1329,9 +1401,6 @@ function getAdjustRecipeOutputAmount(recipe, recipeOutput, outputItem, currentAm
 			elseif outputFluidCalculationType == "max-recipe-uses" then
 				scalar = get_total_recipies_using_this_recipe(recipe)
 			end
-			
-			-- return nothing
-			return nil
 		else
 			-- items/tools/ammo... etc
 			if outputItemCalculationType == "default" then
@@ -1345,22 +1414,25 @@ function getAdjustRecipeOutputAmount(recipe, recipeOutput, outputItem, currentAm
 			elseif outputItemCalculationType == "max-recipe-uses" then
 				scalar = get_total_recipies_using_this_recipe(recipe)
 			end
-			
-			-- return nothing
+		end
+
+		-- stack_size can be missing on fluids, so bail rather than write an empty range
+		if type(scalar) ~= "number" then
 			return nil
 		end
-		
+
+		-- apply the scalar to every key of the range ({amount_min, amount_max})
 		local newValue = {}
 		for k, v in pairs(currentAmount) do
 			newValue[k] = scalar
 		end
-		
+
 		return newValue
 	end
 
 end
 
-function getAdjustResearchTimeAmount(currentAmount)
+getAdjustResearchTimeAmount = function(currentAmount)
 	if researchTimeCalculationType == "default" then
 		return currentAmount
 	elseif researchTimeCalculationType == "custom" then
@@ -1371,7 +1443,7 @@ function getAdjustResearchTimeAmount(currentAmount)
 	return nil
 end
 
-function getAdjustResearchTimeFormulaAmount(currentFormula)
+getAdjustResearchTimeFormulaAmount = function(currentFormula)
 	if researchTimeCalculationType == "default" then
 		return currentFormula
 	elseif researchTimeCalculationType == "custom" then
@@ -1382,7 +1454,7 @@ function getAdjustResearchTimeFormulaAmount(currentFormula)
 	return nil
 end
 
-function getAdjustResearchCostAmount(current_amount)
+getAdjustResearchCostAmount = function(current_amount)
 	if researchCostCalculationType == "default" then
 		return current_amount
 	elseif researchCostCalculationType == "custom" then
@@ -1394,7 +1466,7 @@ function getAdjustResearchCostAmount(current_amount)
 	return nil
 end
 
-function getAdjustResearchCountAmount(current_amount)
+getAdjustResearchCountAmount = function(current_amount)
 	if researchCountCalculationType == "default" then
 		return current_amount
 	elseif researchCountCalculationType == "custom" then
@@ -1406,7 +1478,7 @@ function getAdjustResearchCountAmount(current_amount)
 	return nil
 end
 
-function get_research_ingredient_cost(data)
+get_research_ingredient_cost = function(data)
 	if data[2] ~= nil then
 		return data[2]
 	end
@@ -1419,7 +1491,7 @@ function get_research_ingredient_cost(data)
 	return nil
 end
 
-function adjustResearch(tech)
+adjustResearch = function(tech)
 	tech_unit = tech.unit -- https://wiki.factorio.com/Prototype/Technology#unit
 	if tech_unit ~= nil then
 		--print("[adjustResearch] No unit for " .. dump(tech))
@@ -1451,7 +1523,7 @@ function adjustResearch(tech)
 	end
 end
 
-function adjustResearchUnit(tech, tech_unit)
+adjustResearchUnit = function(tech, tech_unit)
 	--print("[adjustResearch] " .. dump(tech_unit))
 		
 	-- time
@@ -1464,10 +1536,18 @@ function adjustResearchUnit(tech, tech_unit)
 		local current_count = tech_unit.count 
 		local adjusted_count = getAdjustResearchCountAmount(current_count) * researchCountMultiplier * researchMultiplier
 		tech_unit.count  = math.max(1, math.min(adjusted_count, 65535))
-	else
+	elseif tech_unit.count_formula ~= nil then
 		local current_formula = tech_unit.count_formula
-		local adjusted_formula = getAdjustResearchTimeFormulaAmount(current_formula) .. "*" .. researchCountMultiplier .. "*" .. researchMultiplier
-		tech_unit.count_formula = adjusted_formula
+		local adjusted_formula = getAdjustResearchTimeFormulaAmount(current_formula)
+		if adjusted_formula ~= nil then
+			-- only rewrite the formula when a multiplier would actually change it, otherwise
+			-- every infinite technology gets "*1*1" stapled on for no reason. Wrap the original
+			-- in brackets so a formula ending in "+x" still multiplies as a whole.
+			if researchCountMultiplier ~= 1 or researchMultiplier ~= 1 then
+				adjusted_formula = "(" .. adjusted_formula .. ")*" .. researchCountMultiplier .. "*" .. researchMultiplier
+			end
+			tech_unit.count_formula = adjusted_formula
+		end
 	end
 
 	-- How many of each ingredient are required
@@ -1481,19 +1561,19 @@ function adjustResearchUnit(tech, tech_unit)
 	-- Stack research changes
 	if tech.effects ~= nil then
 		for j, effect in pairs(tech.effects) do
-				if researchInserterEditingEnabled then
-					-- increase inserter stack size bonus
-					if effect.type == "stack-inserter-capacity-bonus" then
-						effect.modifier = effect.modifier * researchInserterStackSizeBonus
-					elseif effect.type == "inserter-stack-size-bonus" then
-						effect.modifier = effect.modifier * researchStackInserterStacksizeBonus
+			if researchInserterEditingEnabled then
+				-- increase inserter stack size bonus
+				if effect.type == "inserter-stack-size-bonus" then
+					effect.modifier = effect.modifier * researchInserterStackSizeBonus
+				elseif effect.type == "bulk-inserter-capacity-bonus" or effect.type == "stack-inserter-capacity-bonus" then
+					effect.modifier = effect.modifier * researchStackInserterStacksizeBonus
 				end
+			end
 
-				if researchRobotEditingEnabled then
-					-- robot stack size bonus
-					if effect.type == "worker-robot-storage" then
-						effect.modifier = effect.modifier * researchRobotStackSizeBonus
-					end
+			if researchRobotEditingEnabled then
+				-- robot stack size bonus
+				if effect.type == "worker-robot-storage" then
+					effect.modifier = effect.modifier * researchRobotStackSizeBonus
 				end
 			end
 		end
@@ -1505,12 +1585,12 @@ end
 -------------------------------------------
 
 
-function cacheRecipes()
+cacheRecipes = function()
 	for i, recipe in pairs(data.raw.recipe) do
 		if recipe.type == "recipe" then
 			local recipe_name = get_recipe_name(recipe)
 			if recipe_name then
-				print("cached recipe: " .. dump(recipe_name))
+				--print("cached recipe: " .. dump(recipe_name))
 				cached_recipes[recipe_name] = recipe
 			else
 				--print("Skipped Recipe: " .. dump(recipe))
@@ -1521,10 +1601,15 @@ function cacheRecipes()
 	end
 end
 
-function cacheItems(d)
+cacheItems = function(d)
+	-- some cached types only exist with an expansion enabled, so data.raw won't have them at all
+	if d == nil then
+		return
+	end
+
 	for i, item in pairs(d) do
 		if type(item) == "table" then
-			print("ITEM: " .. dump(item))
+			--print("ITEM: " .. dump(item))
 			cached_items[item["name"]] = item
 		end	
 	end
@@ -1560,20 +1645,20 @@ end
 --
 -- Change recipes
 --
-for recipe_name, recipe in pairs(data) do
-	print("data: " .. dump(recipe_name))
-end
-print("data.extend: " .. dump(data.extend))
-for recipe_name, recipe in pairs(data.raw) do
-	print("data.raw: " .. dump(recipe_name))
-end
+--for recipe_name, recipe in pairs(data) do
+--	print("data: " .. dump(recipe_name))
+--end
+--print("data.extend: " .. dump(data.extend))
+--for recipe_name, recipe in pairs(data.raw) do
+--	print("data.raw: " .. dump(recipe_name))
+--end
 
 --print("Caching recipes")
 cacheRecipes()
 --print("CACHED RECIPES: " .. dump(cached_recipes))
 
 --print("Caching items")
-local items_types_to_cache = {"item", "gun", "ammo", "armor", "repair-tool", "tool", "item-with-entity-data", "capsule", "rail-planner", "module", "spidertron-remote", "fluid", "container", "electric-pole"}
+local items_types_to_cache = {"item", "gun", "ammo", "armor", "repair-tool", "tool", "item-with-entity-data", "capsule", "rail-planner", "module", "spidertron-remote", "fluid", "space-platform-starter-pack"}
 for i, value in ipairs(items_types_to_cache) do
 	local items = data.raw[value]
 	cacheItems(items)
@@ -1587,6 +1672,13 @@ end
 
 for recipe_name, recipe in pairs(cached_recipes) do
 	processRecipe(recipe)
+end
+
+-- after processRecipe, so the final stack sizes are the ones the weights come from
+if rocketWeightEditingEnabled ~= false and rocketWeightDeriveMissing ~= false then
+	for item_name, item in pairs(cached_items) do
+		deriveMissingRocketWeight(item)
+	end
 end
 
 --print("CACHED RECIPES: " .. dump(cached_recipes))
