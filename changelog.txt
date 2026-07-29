@@ -1,4 +1,18 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.1.0
+Date: 29. 07. 2026
+  Features:
+    - Work for Factorio v2.1.12
+    - Added settings to modify Item Rocket Weight
+    - Added settings to modify Spoilage 
+  Changes:
+    - Pass done on Locale titles and descriptions
+  Fixes:
+    - Fixed some items not affected by SGR (wooden chests, power poles)
+    - Fixed bulk-inserter settings not working
+    - Fixed some SGR settings icons being grey
+    - Fixed some SGR funtions leaking into other mods and breaking
+---------------------------------------------------------------------------------------------------
 Version: 1.0.1
 Date: 24. 06. 2025
   Fixes:
@@ -13,7 +27,7 @@ Version: 0.10.1
 Date: 3. 7. 2023
   Features:
     - Settings now has icons to help explain what they are for
-  Fixed:
+  Fixes:
     - Fixed Angel Refining mod crashing due to research cost format changed
 ---------------------------------------------------------------------------------------------------
 Version: 0.10.0
@@ -22,7 +36,7 @@ Date: 28. 5. 2023
     - Added 'Allow Mining Drill Editing' (default: Off)
     - Added 'Mining Drill Speed Multiplier' (default: 1)
     - Added 'Mining Drill Area Multiplier' (default: 1)
-  Fixed:
+  Fixes:
     - Fixed Extended Vanilla mods breaking on startup (Thanks foxwhite25!)
     - Fixed Basic, advanced and core liquefaction recipes not working with SGR settings
 ---------------------------------------------------------------------------------------------------
@@ -33,26 +47,26 @@ Date: 16. 4. 2023
     - Added 'Global Cost Multiplier' (default: 1)
     - Added 'Global Output Multiplier' (default: 1)
     - Added 'Power Recharge Multiplier' (default: 1)
-  Update:
+  Changes:
     - All settings are now off by default except for enabling each setting.
 ---------------------------------------------------------------------------------------------------
 Version: 0.8.1
 Date: 3. 11. 2022
-  Bugfixes:
+  Fixes:
     - Fixed crash on boot due to stacksize issues in Vanilla and other mods.
-  Update:
+  Changes:
     - Fixed dropdown names for all Research types not localised
 ---------------------------------------------------------------------------------------------------
 Version: 0.8.0
 Date: 3. 08. 2022
   Features:
     - Added Settings to modify Research Time and Cost (default: Off)
-  Update:
+  Changes:
     - Changed all recipes to only require 1 by default.
 ---------------------------------------------------------------------------------------------------
 Version: 0.7.0
 Date: 7. 06. 2021
-  Update:
+  Changes:
     - Added Power settings to control how much Energy is distributed throughout the game
   Features:
     - Added 'Allow Power Editing' (default: Off)
@@ -66,15 +80,15 @@ Version: 0.6.2
 Date: 17. 01. 2021
   Features:
     - Added 'Output Always Exceeds Requirements' (default: On)
-  Bugfixes:
+  Fixes:
     - Fixed 'Kovarex Enrichment Process' giving less uranium 235 and 238 than requried.
 ---------------------------------------------------------------------------------------------------
 Version: 0.6.1
 Date: 13. 12. 2020
   Features:
     - Added 'Output Always Give Maximum' (default: On)
-  Bugfixes:
-    - Fixed Mining Drones's Supply Depots giving really small amount if 
+  Fixes:
+    - Fixed Mining Drones's Supply Depots giving really small amount if
 ---------------------------------------------------------------------------------------------------
 Version: 0.6.0
 Date: 12. 12. 2020
@@ -84,16 +98,16 @@ Date: 12. 12. 2020
     - Added Recipe requirements Multiplier (default: 1)
     - Added Recipe crafting time Multiplier (default: 1)
 
-  Updates:
+  Changes:
     - Changed calculated crafting time default from 1 second to 0.5 seconds (Reflects Factorio's Default)
     - Added more info to Global Multiplier
 
-  Bugfixes:
+  Fixes:
     - Turned off Debugging to speed up Factorio booting
     - Fixed Conflict with Reverse Factory
     - Fixed some output for recipes not being accurate when using "Default" option and global multiplier
 
-  Settings Changes:
+  Changes:
     - Stacksize editing now off by default
     - Stacksize multiplier now off by default
     - Robot Stacksize research now off by default
@@ -116,7 +130,7 @@ Date: 30. 11. 2020
 ---------------------------------------------------------------------------------------------------
 Version: 0.4.0
 Date: 18. 08. 2020
-  Updates:
+  Changes:
     - Updated Mod Settings information
     - Updated Mod Settings descriptions
     - Renamed a lot of options to help future versions be more descirptive
@@ -130,7 +144,7 @@ Date: 18. 08. 2020
     - Added 'Recipe Fluid Output Amount'
     - Added 'Recipe Requirement Fluid Amount'
     - Removed 'Recipe Output Use Max' option and made it on by default
-  Bugfixes:
+  Fixes:
     - Fixed Sorting order of some mod settings
     - Fixed Stack Sizes for items set to 0 being modified
 ---------------------------------------------------------------------------------------------------
@@ -138,7 +152,7 @@ Version: 0.3.1
 Date: 06. 08. 2020
   Features:
     - Added Max Recipe Uses output setting option
-  Bugfixes:
+  Fixes:
     - Values in options can no longer be set to 0
     - Fixed change recipe time not changing for some recipes.
 ---------------------------------------------------------------------------------------------------
@@ -146,7 +160,7 @@ Version: 0.3.0
 Date: 12. 07. 2020
   Features:
     - Added Max Recipe Uses output setting option
-  Bugfixes:
+  Fixes:
     - Fixed Error stopping the mod working for angels mod
     - Fixed Error stopping the mod working for natural evolutions mod
 ---------------------------------------------------------------------------------------------------
@@ -157,24 +171,24 @@ Date: 12. 04. 2020
     - Added Setting option to change inserter stack size amount when researching
     - Added Setting option to change stack inserter stack size amount when researching
     - Added Setting option to change robot stack size amount when researching
-  Bugfixes:
+  Fixes:
     - Fixed output of recipes that are meant to output 0 but are modified to return more (Krastorio 2 - Crushing sand)
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.3
 Date: 10. 04. 2020
   Features:
     - Added setting to use default output value for recipes if it's higher than what's calculated.
-  Bugfixes:
+  Fixes:
     - Fixed small-electric-pole's output not being modified in Krastorio 2
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.2
 Date: 06. 04. 2020
-  Bugfixes:
+  Fixes:
     - Fixed 'stack_size' must be 1 when not-stackable is set.
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.1
 Date: 06. 04. 2020
-  Bugfixes:
+  Fixes:
     - Fixed 'super-generous-recipes/data-updates.lua:183: attempt to concatenate a nil value'
     - Added nil checks for debug logs
 ---------------------------------------------------------------------------------------------------
@@ -184,7 +198,7 @@ Date: 05. 04. 2020
     - Added settings to modify what Super Generous Recipes edits and by how much
     - Mod now works for Bobs mods
     - Mod now works for Krastorio 2
-  Bugfixes:
+  Fixes:
     - Fixed 'Stack size can not be 0' error
 ---------------------------------------------------------------------------------------------------
 Version: 0.0.6
@@ -193,11 +207,11 @@ Date: 09. 02. 2020
     - FactorioExtended-Plus now works with this mod
 ---------------------------------------------------------------------------------------------------
 Version: 0.0.5
-Date: 29. 11. 2020
+Date: 29. 11. 2019
   Features:
     - Adjusted dependency to work for 0.18.x
     - Optimized boot time
-  Bugfixes:
+  Fixes:
     - Mod now considers fluid-recipes when calculating output and stack sizes.
 ---------------------------------------------------------------------------------------------------
 Version: 0.0.4
@@ -211,7 +225,7 @@ Version: 0.0.3
 Date: 28. 10. 2019
   Features:
     - Now works with several mods.
-  Bugfixes:
+  Fixes:
     - Mod not breaking when a recipe is not found
 ---------------------------------------------------------------------------------------------------
 Version: 0.0.2
